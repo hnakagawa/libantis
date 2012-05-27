@@ -38,6 +38,12 @@
 #ifdef HAVE_ARPA_NAMESER_COMPAT_H
 #include <arpa/nameser_compat.h>
 #endif
+
+#ifdef _ANDROID
+#include <arpa_nameser_compat.h>
+#include <arpa_nameser.h>
+#endif
+
 #include <resolv.h>
 #endif
 
