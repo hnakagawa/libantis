@@ -22,12 +22,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <pthread.h>
+#include <errno.h>
 
 #include <strophe.h>
 
 #include "common.h"
 #include "util.h"
 #include "parser.h"
+#include "fifo.h"
 
 #ifndef DEFAULT_SEND_QUEUE_MAX
 /** @def DEFAULT_SEND_QUEUE_MAX
@@ -73,14 +76,19 @@ xmpp_conn_t *xmpp_conn_new(xmpp_ctx_t * const ctx)
     xmpp_conn_t *conn = NULL;
     xmpp_connlist_t *tail, *item;
 
-    if (ctx == NULL) return NULL;
+    if (ctx == NULL)
+		return NULL;
+
 	conn = xmpp_alloc(ctx, sizeof(xmpp_conn_t));
-    
-    if (conn != NULL) {
+	if (conn == NULL) {
+		xmpp_error(conn->ctx, "xmpp", "failed to allocate memory");
+		return NULL;
+	}
+	
 	conn->ctx = ctx;
 
 	conn->type = XMPP_UNKNOWN;
-        conn->state = XMPP_STATE_DISCONNECTED;
+	conn->state = XMPP_STATE_DISCONNECTED;
 	conn->sock = -1;
 	conn->tls = NULL;
 	conn->timeout_stamp = 0;
@@ -94,69 +102,114 @@ xmpp_conn_t *xmpp_conn_new(xmpp_ctx_t * const ctx)
 	conn->send_queue_head = NULL;
 	conn->send_queue_tail = NULL;
 
+	if (pthread_mutex_init(&conn->send_queue_lock, NULL)) {
+		xmpp_error(conn->ctx, "xmpp", "failed to init mutex");
+		goto err_send_queue_mutex_init;
+	}
+
+	conn->event_queue = fifo_new(ctx);
+	if (!conn->event_queue) {
+		xmpp_error(conn->ctx, "xmpp", "failed to allocate fifo");
+		goto err_fifo_new;
+	}
+
+	fifo_enable(conn->event_queue);
+	fifo_set_nonblock(conn->event_queue);
+
 	/* default timeouts */
 	conn->connect_timeout = CONNECT_TIMEOUT;
 
 	conn->lang = xmpp_strdup(conn->ctx, "en");
 	if (!conn->lang) {
-	    xmpp_free(conn->ctx, conn);
-	    return NULL;
+		xmpp_error(conn->ctx, "xmpp", "failed to allocate memory");
+		goto err_alloc_lang;
 	}
+
 	conn->domain = NULL;
 	conn->jid = NULL;
 	conn->pass = NULL;
 	conn->stream_id = NULL;
-        conn->bound_jid = NULL;
+	conn->bound_jid = NULL;
 
 	conn->tls_support = 0;
 	conn->tls_disabled = 0;
 	conn->tls_failed = 0;
 	conn->sasl_support = 0;
-        conn->secured = 0;
+	conn->secured = 0;
 
 	conn->bind_required = 0;
 	conn->session_required = 0;
 
 	conn->parser = parser_new(conn->ctx, 
-                                  _handle_stream_start,
-                                  _handle_stream_end,
-                                  _handle_stream_stanza,
-                                  conn);
-        conn->reset_parser = 0;
-        conn_prepare_reset(conn, auth_handle_open);
+							  _handle_stream_start,
+							  _handle_stream_end,
+							  _handle_stream_stanza,
+							  conn);
+	conn->reset_parser = 0;
+	conn_prepare_reset(conn, auth_handle_open);
 
 	conn->authenticated = 0;
 	conn->conn_handler = NULL;
 	conn->userdata = NULL;
 	conn->timed_handlers = NULL;
+
+	if (pthread_mutex_init(&conn->timed_handlers_lock, NULL)) {
+		xmpp_error(conn->ctx, "xmpp", "failed to init mutex");
+		goto err_timed_handers_mutex_init;
+	}
+
 	/* we own (and will free) the hash values */
 	conn->id_handlers = hash_new(conn->ctx, 32, NULL);
+	if (pthread_mutex_init(&conn->id_handlers_lock, NULL)) {
+		xmpp_error(conn->ctx, "xmpp", "failed to init mutex");
+		goto err_id_handers_mutex_init;
+	}
+
 	conn->handlers = NULL;
+	if (pthread_mutex_init(&conn->handlers_lock, NULL)) {
+		xmpp_error(conn->ctx, "xmpp", "failed to init mutex");
+		goto err_handers_mutex_init;
+	}
 
 	/* give the caller a reference to connection */
 	conn->ref = 1;
 
 	/* add connection to ctx->connlist */
 	tail = conn->ctx->connlist;
-	while (tail && tail->next) tail = tail->next;
+	while (tail && tail->next)
+		tail = tail->next;
 
 	item = xmpp_alloc(conn->ctx, sizeof(xmpp_connlist_t));
 	if (!item) {
-	    xmpp_error(conn->ctx, "xmpp", "failed to allocate memory");
-	    xmpp_free(conn->ctx, conn->lang);
-            parser_free(conn->parser);
-	    xmpp_free(conn->ctx, conn);
-	    conn = NULL;
+		xmpp_error(conn->ctx, "xmpp", "failed to allocate memory");
+		goto err_alloc_item;
 	} else {
-	    item->conn = conn;
-	    item->next = NULL;
+		item->conn = conn;
+		item->next = NULL;
 
-	    if (tail) tail->next = item;
-	    else conn->ctx->connlist = item;
+		if (tail) tail->next = item;
+		else conn->ctx->connlist = item;
 	}
-    }
     
     return conn;
+
+err_alloc_item:
+	pthread_mutex_destroy(&conn->id_handlers_lock);
+err_handers_mutex_init:
+	pthread_mutex_destroy(&conn->handlers_lock);
+err_id_handers_mutex_init:
+	pthread_mutex_destroy(&conn->timed_handlers_lock);
+err_timed_handers_mutex_init:
+	xmpp_free(conn->ctx, conn->lang);
+	parser_free(conn->parser);
+err_alloc_lang:
+	fifo_delete(conn->event_queue);
+err_fifo_new:
+	pthread_mutex_destroy(&conn->send_queue_lock);
+err_send_queue_mutex_init:
+	xmpp_free(conn->ctx, conn);
+
+	return NULL;
 }
 
 /** Clone a Strophe connection object.
@@ -194,88 +247,97 @@ int xmpp_conn_release(xmpp_conn_t * const conn)
     int released = 0;
 
     if (conn->ref > 1) 
-	conn->ref--;
+		conn->ref--;
     else {
-	ctx = conn->ctx;
+		ctx = conn->ctx;
 
-	/* remove connection from context's connlist */
-	if (ctx->connlist->conn == conn) {
-	    item = ctx->connlist;
-	    ctx->connlist = item->next;
-	    xmpp_free(ctx, item);
-	} else {
-	    prev = NULL;
-	    item = ctx->connlist;
-	    while (item && item->conn != conn) {
-		prev = item;
-		item = item->next;
-	    }
+		/* remove connection from context's connlist */
+		if (ctx->connlist->conn == conn) {
+			item = ctx->connlist;
+			ctx->connlist = item->next;
+			xmpp_free(ctx, item);
+		} else {
+			prev = NULL;
+			item = ctx->connlist;
+			while (item && item->conn != conn) {
+				prev = item;
+				item = item->next;
+			}
 
-	    if (!item) {
-		xmpp_error(ctx, "xmpp", "Connection not in context's list\n");
-	    } else {
-		prev->next = item->next;
-		xmpp_free(ctx, item);
-	    }
-	}
+			if (!item) {
+				xmpp_error(ctx, "xmpp", "Connection not in context's list\n");
+			} else {
+				prev->next = item->next;
+				xmpp_free(ctx, item);
+			}
+		}
 
-	/* free handler stuff
-	 * note that userdata is the responsibility of the client
-	 * and the handler pointers don't need to be freed since they
-	 * are pointers to functions */
+		fifo_delete(conn->event_queue);
+	
+		/* free handler stuff
+		 * note that userdata is the responsibility of the client
+		 * and the handler pointers don't need to be freed since they
+		 * are pointers to functions */
+		hlitem = conn->timed_handlers;
+		while (hlitem) {
+			thli = hlitem;
+			hlitem = hlitem->next;
 
-	hlitem = conn->timed_handlers;
-	while (hlitem) {
-	    thli = hlitem;
-	    hlitem = hlitem->next;
+			xmpp_free(ctx, thli);
+		}
 
-	    xmpp_free(ctx, thli);
-	}
+		pthread_mutex_destroy(&conn->timed_handlers_lock);
 
-	/* id handlers
-	 * we have to traverse the hash table freeing list elements 
-	 * then release the hash table */
-	iter = hash_iter_new(conn->id_handlers);
-	while ((key = hash_iter_next(iter))) {
-	    hlitem = (xmpp_handlist_t *)hash_get(conn->id_handlers, key);
-	    while (hlitem) {
-		thli = hlitem;
-		hlitem = hlitem->next;
-		xmpp_free(conn->ctx, thli->id);
-		xmpp_free(conn->ctx, thli);
-	    }
-	}
-	hash_iter_release(iter);
-	hash_release(conn->id_handlers);
+		/* id handlers
+		 * we have to traverse the hash table freeing list elements 
+		 * then release the hash table */
+		iter = hash_iter_new(conn->id_handlers);
+		while ((key = hash_iter_next(iter))) {
+			hlitem = (xmpp_handlist_t *)hash_get(conn->id_handlers, key);
+			while (hlitem) {
+				thli = hlitem;
+				hlitem = hlitem->next;
+				xmpp_free(conn->ctx, thli->id);
+				xmpp_free(conn->ctx, thli);
+			}
+		}
+		hash_iter_release(iter);
+		hash_release(conn->id_handlers);
 
-	hlitem = conn->handlers;
-	while (hlitem) {
-	    thli = hlitem;
-	    hlitem = hlitem->next;
+		pthread_mutex_destroy(&conn->id_handlers_lock);
 
-	    if (thli->ns) xmpp_free(ctx, thli->ns);
-	    if (thli->name) xmpp_free(ctx, thli->name);
-	    if (thli->type) xmpp_free(ctx, thli->type);
-	    xmpp_free(ctx, thli);
-	}
+		hlitem = conn->handlers;
+		while (hlitem) {
+			thli = hlitem;
+			hlitem = hlitem->next;
 
-	if (conn->stream_error) {
-	    xmpp_stanza_release(conn->stream_error->stanza);
-	    if (conn->stream_error->text)
-		xmpp_free(ctx, conn->stream_error->text);
-	    xmpp_free(ctx, conn->stream_error);
-	}
+			if (thli->ns) xmpp_free(ctx, thli->ns);
+			if (thli->name) xmpp_free(ctx, thli->name);
+			if (thli->type) xmpp_free(ctx, thli->type);
+			xmpp_free(ctx, thli);
+		}
+
+		pthread_mutex_destroy(&conn->handlers_lock);
+
+		if (conn->stream_error) {
+			xmpp_stanza_release(conn->stream_error->stanza);
+			if (conn->stream_error->text)
+				xmpp_free(ctx, conn->stream_error->text);
+			xmpp_free(ctx, conn->stream_error);
+		}
 
         parser_free(conn->parser);
 	
-	if (conn->domain) xmpp_free(ctx, conn->domain);
-	if (conn->jid) xmpp_free(ctx, conn->jid);
-    if (conn->bound_jid) xmpp_free(ctx, conn->bound_jid);
-	if (conn->pass) xmpp_free(ctx, conn->pass);
-	if (conn->stream_id) xmpp_free(ctx, conn->stream_id);
-	if (conn->lang) xmpp_free(ctx, conn->lang);
-	xmpp_free(ctx, conn);
-	released = 1;
+		pthread_mutex_destroy(&conn->send_queue_lock);
+
+		if (conn->domain) xmpp_free(ctx, conn->domain);
+		if (conn->jid) xmpp_free(ctx, conn->jid);
+		if (conn->bound_jid) xmpp_free(ctx, conn->bound_jid);
+		if (conn->pass) xmpp_free(ctx, conn->pass);
+		if (conn->stream_id) xmpp_free(ctx, conn->stream_id);
+		if (conn->lang) xmpp_free(ctx, conn->lang);
+		xmpp_free(ctx, conn);
+		released = 1;
     }
 
     return released;
@@ -552,28 +614,28 @@ void xmpp_send_raw_string(xmpp_conn_t * const conn,
     va_end(ap);
 
     if (len >= 1024) {
-	/* we need more space for this data, so we allocate a big 
-	 * enough buffer and print to that */
-	len++; /* account for trailing \0 */
-	bigbuf = xmpp_alloc(conn->ctx, len);
-	if (!bigbuf) {
-	    xmpp_debug(conn->ctx, "xmpp", "Could not allocate memory for send_raw_string");
-	    return;
-	}
-	va_start(ap, fmt);
-	xmpp_vsnprintf(bigbuf, len, fmt, ap);
-	va_end(ap);
+		/* we need more space for this data, so we allocate a big 
+		 * enough buffer and print to that */
+		len++; /* account for trailing \0 */
+		bigbuf = xmpp_alloc(conn->ctx, len);
+		if (!bigbuf) {
+			xmpp_debug(conn->ctx, "xmpp", "Could not allocate memory for send_raw_string");
+			return;
+		}
+		va_start(ap, fmt);
+		xmpp_vsnprintf(bigbuf, len, fmt, ap);
+		va_end(ap);
 
-	xmpp_debug(conn->ctx, "conn", "SENT: %s", bigbuf);
+		xmpp_debug(conn->ctx, "conn", "SENT: %s", bigbuf);
 
-	/* len - 1 so we don't send trailing \0 */
-	xmpp_send_raw(conn, bigbuf, len - 1);
+		/* len - 1 so we don't send trailing \0 */
+		xmpp_send_raw(conn, bigbuf, len - 1);
 
-	xmpp_free(conn->ctx, bigbuf);
+		xmpp_free(conn->ctx, bigbuf);
     } else {
-	xmpp_debug(conn->ctx, "conn", "SENT: %s", buf);
 
-	xmpp_send_raw(conn, buf, len);
+		xmpp_debug(conn->ctx, "conn", "SENT: %s", buf);
+		xmpp_send_raw(conn, buf, len);
     }
 }
 
@@ -590,6 +652,7 @@ void xmpp_send_raw_string(xmpp_conn_t * const conn,
 void xmpp_send_raw(xmpp_conn_t * const conn,
 		   const char * const data, const size_t len)
 {
+	static const xmpp_event_t event = XMPP_ENQUEUED_SEND_EVENT;
     xmpp_send_queue_t *item;
 
     if (conn->state != XMPP_STATE_CONNECTED) return;
@@ -600,27 +663,33 @@ void xmpp_send_raw(xmpp_conn_t * const conn,
 
     item->data = xmpp_alloc(conn->ctx, len);
     if (!item->data) {
-	xmpp_free(conn->ctx, item);
-	return;
+		xmpp_free(conn->ctx, item);
+		return;
     }
     memcpy(item->data, data, len);
     item->len = len;
     item->next = NULL;
     item->written = 0;
 
+	pthread_mutex_lock(&conn->send_queue_lock);
+
     /* add item to the send queue */
     if (!conn->send_queue_tail) {
-	/* first item, set head and tail */
-	conn->send_queue_head = item;
-	conn->send_queue_tail = item;
+		/* first item, set head and tail */
+		conn->send_queue_head = item;
+		conn->send_queue_tail = item;
     } else {
-	/* add to the tail */
-	conn->send_queue_tail->next = item;
-	conn->send_queue_tail = item;
+		/* add to the tail */
+		conn->send_queue_tail->next = item;
+		conn->send_queue_tail = item;
     }
     conn->send_queue_len++;
-}
 
+	pthread_mutex_unlock(&conn->send_queue_lock);
+
+	if (fifo_put(conn->event_queue, (void*)&event) < 0)
+		xmpp_error(conn->ctx, "xmpp", "%s: fifo_put() failed: errno=%d", __func__, errno);
+}
 /** Send an XML stanza to the XMPP server.
  *  This is the main way to send data to the XMPP server.  The function will
  *  terminate without action if the connection state is not CONNECTED.
@@ -638,11 +707,11 @@ void xmpp_send(xmpp_conn_t * const conn,
     int ret;
 
     if (conn->state == XMPP_STATE_CONNECTED) {
-	if ((ret = xmpp_stanza_to_text(stanza, &buf, &len)) == 0) {
-	    xmpp_send_raw(conn, buf, len);
-	    xmpp_debug(conn->ctx, "conn", "SENT: %s", buf);
-	    xmpp_free(conn->ctx, buf);
-	}
+		if ((ret = xmpp_stanza_to_text(stanza, &buf, &len)) == 0) {
+			xmpp_send_raw(conn, buf, len);
+			xmpp_debug(conn->ctx, "conn", "SENT: %s", buf);
+			xmpp_free(conn->ctx, buf);
+		}
     }
 }
 

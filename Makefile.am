@@ -20,7 +20,8 @@ libstrophe_a_SOURCES = src/auth.c src/conn.c src/ctx.c \
 	src/snprintf.c src/sock.c src/stanza.c src/thread.c \
 	src/tls_openssl.c src/util.c \
 	src/common.h src/hash.h src/md5.h src/ostypes.h src/parser.h \
-	src/sasl.h src/sha1.h src/sock.h src/thread.h src/tls.h src/util.h
+	src/sasl.h src/sha1.h src/sock.h src/thread.h src/tls.h src/util.h \
+	src/fifo.c src/fifo_internal.c
 
 if PARSER_EXPAT
 libstrophe_a_SOURCES += src/parser_expat.c

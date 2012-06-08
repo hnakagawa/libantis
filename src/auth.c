@@ -726,89 +726,89 @@ static int _handle_features_sasl(xmpp_conn_t * const conn,
 
     bind = xmpp_stanza_get_child_by_name(stanza, "bind");
     if (bind && strcmp(xmpp_stanza_get_ns(bind), XMPP_NS_BIND) == 0) {
-	/* resource binding is required */
-	conn->bind_required = 1;
+		/* resource binding is required */
+		conn->bind_required = 1;
     }
 
     session = xmpp_stanza_get_child_by_name(stanza, "session");
     if (session && strcmp(xmpp_stanza_get_ns(session), XMPP_NS_SESSION) == 0) {
-	/* session establishment required */
-	conn->session_required = 1;
+		/* session establishment required */
+		conn->session_required = 1;
     }
 
     /* if bind is required, go ahead and start it */
     if (conn->bind_required) {
-	/* bind resource */
+		/* bind resource */
 	
-	/* setup response handlers */
-	handler_add_id(conn, _handle_bind, "_xmpp_bind1", NULL);
-	handler_add_timed(conn, _handle_missing_bind,
-			  BIND_TIMEOUT, NULL);
+		/* setup response handlers */
+		handler_add_id(conn, _handle_bind, "_xmpp_bind1", NULL);
+		handler_add_timed(conn, _handle_missing_bind,
+						  BIND_TIMEOUT, NULL);
 
-	/* send bind request */
-	iq = xmpp_stanza_new(conn->ctx);
-	if (!iq) {
-	    disconnect_mem_error(conn);
-	    return 0;
-	}
+		/* send bind request */
+		iq = xmpp_stanza_new(conn->ctx);
+		if (!iq) {
+			disconnect_mem_error(conn);
+			return 0;
+		}
 
-	xmpp_stanza_set_name(iq, "iq");
-	xmpp_stanza_set_type(iq, "set");
-	xmpp_stanza_set_id(iq, "_xmpp_bind1");
+		xmpp_stanza_set_name(iq, "iq");
+		xmpp_stanza_set_type(iq, "set");
+		xmpp_stanza_set_id(iq, "_xmpp_bind1");
 
-	bind = xmpp_stanza_copy(bind);
-	if (!bind) {
-	    xmpp_stanza_release(iq);
-	    disconnect_mem_error(conn);
-	    return 0;
-	}
+		bind = xmpp_stanza_copy(bind);
+		if (!bind) {
+			xmpp_stanza_release(iq);
+			disconnect_mem_error(conn);
+			return 0;
+		}
 
-	/* request a specific resource if we have one */
+		/* request a specific resource if we have one */
         resource = xmpp_jid_resource(conn->ctx, conn->jid);
-	if ((resource != NULL) && (strlen(resource) == 0)) {
-	    /* jabberd2 doesn't handle an empty resource */
-	    xmpp_free(conn->ctx, resource);
-	    resource = NULL;
-	}
+		if ((resource != NULL) && (strlen(resource) == 0)) {
+			/* jabberd2 doesn't handle an empty resource */
+			xmpp_free(conn->ctx, resource);
+			resource = NULL;
+		}
 
-	/* if we have a resource to request, do it. otherwise the 
-	   server will assign us one */
-	if (resource) {
-	    res = xmpp_stanza_new(conn->ctx);
-	    if (!res) {
-		xmpp_stanza_release(bind);
-		xmpp_stanza_release(iq);
-		disconnect_mem_error(conn);
-		return 0;
-	    }
-	    xmpp_stanza_set_name(res, "resource");
-	    text = xmpp_stanza_new(conn->ctx);
-	    if (!text) {
-		xmpp_stanza_release(res);
-		xmpp_stanza_release(bind);
-		xmpp_stanza_release(iq);
-		disconnect_mem_error(conn);
-		return 0;
-	    }
-	    xmpp_stanza_set_text(text, resource);
-	    xmpp_stanza_add_child(res, text);
+		/* if we have a resource to request, do it. otherwise the 
+		   server will assign us one */
+		if (resource) {
+			res = xmpp_stanza_new(conn->ctx);
+			if (!res) {
+				xmpp_stanza_release(bind);
+				xmpp_stanza_release(iq);
+				disconnect_mem_error(conn);
+				return 0;
+			}
+			xmpp_stanza_set_name(res, "resource");
+			text = xmpp_stanza_new(conn->ctx);
+			if (!text) {
+				xmpp_stanza_release(res);
+				xmpp_stanza_release(bind);
+				xmpp_stanza_release(iq);
+				disconnect_mem_error(conn);
+				return 0;
+			}
+			xmpp_stanza_set_text(text, resource);
+			xmpp_stanza_add_child(res, text);
             xmpp_stanza_release(text);
-	    xmpp_stanza_add_child(bind, res);
+			xmpp_stanza_add_child(bind, res);
             xmpp_stanza_release(res);
-	    xmpp_free(conn->ctx, resource);
-	}
+			xmpp_free(conn->ctx, resource);
+		}
 
-	xmpp_stanza_add_child(iq, bind);
-	xmpp_stanza_release(bind);
+		xmpp_stanza_add_child(iq, bind);
+		xmpp_stanza_release(bind);
 
-	/* send bind request */
-	xmpp_send(conn, iq);
-	xmpp_stanza_release(iq);
+		/* send bind request */
+		xmpp_send(conn, iq);
+		xmpp_stanza_release(iq);
     } else {
-	/* can't bind, disconnect */
-	xmpp_error(conn->ctx, "xmpp", "Stream features does not allow "\
-		   "resource bind.");
-	xmpp_disconnect(conn);
+		/* can't bind, disconnect */
+		xmpp_error(conn->ctx, "xmpp", "Stream features does not allow "\
+				   "resource bind.");
+		xmpp_disconnect(conn);
     }
 
     return 0;
@@ -836,11 +836,11 @@ static int _handle_bind(xmpp_conn_t * const conn,
     /* server has replied to bind request */
     type = xmpp_stanza_get_type(stanza);
     if (type && strcmp(type, "error") == 0) {
-	xmpp_error(conn->ctx, "xmpp", "Binding failed.");
-	xmpp_disconnect(conn);
+		xmpp_error(conn->ctx, "xmpp", "Binding failed.");
+		xmpp_disconnect(conn);
     } else if (type && strcmp(type, "result") == 0) {
         xmpp_stanza_t *binding = xmpp_stanza_get_child_by_name(stanza, "bind");
-	xmpp_debug(conn->ctx, "xmpp", "Bind successful.");
+		xmpp_debug(conn->ctx, "xmpp", "Bind successful.");
 
         if (binding) {
             xmpp_stanza_t *jid_stanza = xmpp_stanza_get_child_by_name(binding,
@@ -850,49 +850,49 @@ static int _handle_bind(xmpp_conn_t * const conn,
             }
         }
 
-	/* establish a session if required */
-	if (conn->session_required) {
-	    /* setup response handlers */
-	    handler_add_id(conn, _handle_session, "_xmpp_session1", NULL);
-	    handler_add_timed(conn, _handle_missing_session, 
-			      SESSION_TIMEOUT, NULL);
+		/* establish a session if required */
+		if (conn->session_required) {
+			/* setup response handlers */
+			handler_add_id(conn, _handle_session, "_xmpp_session1", NULL);
+			handler_add_timed(conn, _handle_missing_session, 
+							  SESSION_TIMEOUT, NULL);
 
-	    /* send session request */
-	    iq = xmpp_stanza_new(conn->ctx);
-	    if (!iq) {
-		disconnect_mem_error(conn);
-		return 0;
-	    }
+			/* send session request */
+			iq = xmpp_stanza_new(conn->ctx);
+			if (!iq) {
+				disconnect_mem_error(conn);
+				return 0;
+			}
 
-	    xmpp_stanza_set_name(iq, "iq");
-	    xmpp_stanza_set_type(iq, "set");
-	    xmpp_stanza_set_id(iq, "_xmpp_session1");
+			xmpp_stanza_set_name(iq, "iq");
+			xmpp_stanza_set_type(iq, "set");
+			xmpp_stanza_set_id(iq, "_xmpp_session1");
 
-	    session = xmpp_stanza_new(conn->ctx);
-	    if (!session) {
-		xmpp_stanza_release(iq);
-		disconnect_mem_error(conn);
-	    }
+			session = xmpp_stanza_new(conn->ctx);
+			if (!session) {
+				xmpp_stanza_release(iq);
+				disconnect_mem_error(conn);
+			}
 
-	    xmpp_stanza_set_name(session, "session");
-	    xmpp_stanza_set_ns(session, XMPP_NS_SESSION);
+			xmpp_stanza_set_name(session, "session");
+			xmpp_stanza_set_ns(session, XMPP_NS_SESSION);
 
-	    xmpp_stanza_add_child(iq, session);
-	    xmpp_stanza_release(session);
+			xmpp_stanza_add_child(iq, session);
+			xmpp_stanza_release(session);
 
-	    /* send session establishment request */
-	    xmpp_send(conn, iq);
-	    xmpp_stanza_release(iq);
-	} else {
-	    conn->authenticated = 1;
+			/* send session establishment request */
+			xmpp_send(conn, iq);
+			xmpp_stanza_release(iq);
+		} else {
+			conn->authenticated = 1;
 	   
-	    /* call connection handler */
-	    conn->conn_handler(conn, XMPP_CONN_CONNECT, 0, NULL, 
-			       conn->userdata);
-	}
+			/* call connection handler */
+			conn->conn_handler(conn, XMPP_CONN_CONNECT, 0, NULL, 
+							   conn->userdata);
+		}
     } else {
-	xmpp_error(conn->ctx, "xmpp", "Server sent malformed bind reply.");
-	xmpp_disconnect(conn);
+		xmpp_error(conn->ctx, "xmpp", "Server sent malformed bind reply.");
+		xmpp_disconnect(conn);
     }
 
     return 0;

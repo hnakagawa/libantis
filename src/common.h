@@ -25,6 +25,7 @@
 #include <stdint.h>
 #endif
 
+#include <pthread.h>
 
 #include "strophe.h"
 #include "sock.h"
@@ -32,6 +33,7 @@
 #include "hash.h"
 #include "util.h"
 #include "parser.h"
+#include "fifo.h"
 
 /** run-time context **/
 
@@ -54,6 +56,12 @@ struct _xmpp_ctx_t {
     xmpp_connlist_t *connlist;
 };
 
+typedef enum {
+	XMPP_NONE_EVENT,
+	XMPP_ENQUEUED_SEND_EVENT,
+	XMPP_TIMED_EVENT,
+	XMPP_STOP_EVENT
+} xmpp_event_t;
 
 /* convenience functions for accessing the context */
 void *xmpp_alloc(const xmpp_ctx_t * const ctx, const size_t size);
@@ -188,6 +196,9 @@ struct _xmpp_conn_t {
     int send_queue_len;
     xmpp_send_queue_t *send_queue_head;
     xmpp_send_queue_t *send_queue_tail;
+	pthread_mutex_t send_queue_lock;
+
+	fifo_t *event_queue;
 
     /* xml parser */
     int reset_parser;
@@ -210,8 +221,13 @@ struct _xmpp_conn_t {
 
     /* other handlers */
     xmpp_handlist_t *timed_handlers;
+	pthread_mutex_t timed_handlers_lock;
+
     hash_t *id_handlers;
+	pthread_mutex_t id_handlers_lock;
+
     xmpp_handlist_t *handlers;
+	pthread_mutex_t handlers_lock;
 };
 
 void conn_disconnect(xmpp_conn_t * const conn);
@@ -252,6 +268,8 @@ void handler_add_timed(xmpp_conn_t * const conn,
 		       xmpp_timed_handler handler,
 		       const unsigned long period,
 		       void * const userdata);
+void handler_delete_timed(xmpp_conn_t * const conn, xmpp_timed_handler handler);
+
 void handler_add_id(xmpp_conn_t * const conn,
 		    xmpp_handler handler,
 		    const char * const id,

@@ -252,7 +252,6 @@ void xmpp_timed_handler_add(xmpp_conn_t * const conn,
 void xmpp_timed_handler_delete(xmpp_conn_t * const conn,
 			       xmpp_timed_handler handler);
 
-
 /* if the handler returns false it is removed */
 typedef int (*xmpp_handler)(xmpp_conn_t * const conn,
 			     xmpp_stanza_t * const stanza,
@@ -363,7 +362,7 @@ void xmpp_presence_new();
 */
 
 /** event loop **/
-void xmpp_run_once(xmpp_ctx_t *ctx, const unsigned long  timeout);
+void xmpp_run_once(xmpp_ctx_t *ctx);
 void xmpp_run(xmpp_ctx_t *ctx);
 void xmpp_stop(xmpp_ctx_t *ctx);
 
