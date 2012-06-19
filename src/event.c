@@ -157,7 +157,7 @@ void xmpp_run_once(xmpp_ctx_t *ctx)
     fd_set rfds, wfds;
     sock_t max = 0;
     int ret;
-    struct timeval tv;
+    struct timeval tv, *timeout;
     char buf[4096];
     long usec;
     int tls_read_bytes = 0;
@@ -179,7 +179,9 @@ void xmpp_run_once(xmpp_ctx_t *ctx)
 	if (usec > 0) {
 		tv.tv_sec = usec / 1000000;
 		tv.tv_usec = usec % 1000000;
-	}
+		timeout = &tv;
+	} else
+		timeout = NULL;
 
     FD_ZERO(&rfds); 
     FD_ZERO(&wfds);
@@ -227,11 +229,8 @@ void xmpp_run_once(xmpp_ctx_t *ctx)
     }
 
     /* check for events */
-	if (usec > 0)
-		ret = select(max + 1, &rfds, &wfds, NULL, &tv);
-	else
-		ret = select(max + 1, &rfds, &wfds, NULL, NULL);
-
+	ret = select(max + 1, &rfds, &wfds, NULL, timeout);
+	
     /* select errored */
     if (ret < 0) {
 		if (!sock_is_recoverable(sock_error()))

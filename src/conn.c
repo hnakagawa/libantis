@@ -171,6 +171,15 @@ xmpp_conn_t *xmpp_conn_new(xmpp_ctx_t * const ctx)
 		goto err_handers_mutex_init;
 	}
 
+	conn->users = NULL;
+	conn->users_len = 0;
+
+	if (pthread_mutex_init(&conn->users_lock, NULL)) {
+		xmpp_error(conn->ctx, "xmpp", "failed to init mutex");
+		goto err_users_mutex_init;
+	}
+	
+
 	/* give the caller a reference to connection */
 	conn->ref = 1;
 
@@ -194,6 +203,8 @@ xmpp_conn_t *xmpp_conn_new(xmpp_ctx_t * const ctx)
     return conn;
 
 err_alloc_item:
+	pthread_mutex_destroy(&conn->users_lock);
+err_users_mutex_init:
 	pthread_mutex_destroy(&conn->id_handlers_lock);
 err_handers_mutex_init:
 	pthread_mutex_destroy(&conn->handlers_lock);
@@ -244,12 +255,18 @@ int xmpp_conn_release(xmpp_conn_t * const conn)
     xmpp_handlist_t *hlitem, *thli;
     hash_iterator_t *iter;
     const char *key;
-    int released = 0;
+    int i, released = 0;
 
     if (conn->ref > 1) 
 		conn->ref--;
     else {
 		ctx = conn->ctx;
+
+		if (conn->users) {
+			for (i = 0; i < conn->users_len; ++i)
+				xmpp_user_release(conn->users[i]);
+			xmpp_free(ctx, conn->users);
+		}
 
 		/* remove connection from context's connlist */
 		if (ctx->connlist->conn == conn) {

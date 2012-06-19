@@ -28,6 +28,8 @@
 #include <pthread.h>
 
 #include "strophe.h"
+#include "antistrophe.h"
+
 #include "sock.h"
 #include "tls.h"
 #include "hash.h"
@@ -228,6 +230,10 @@ struct _xmpp_conn_t {
 
     xmpp_handlist_t *handlers;
 	pthread_mutex_t handlers_lock;
+
+	xmpp_user_t **users;
+	int users_len;
+	pthread_mutex_t users_lock;
 };
 
 void conn_disconnect(xmpp_conn_t * const conn);
