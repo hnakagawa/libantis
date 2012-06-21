@@ -130,6 +130,7 @@ struct _xmpp_handlist_t {
     int user_handler;
     void *handler;
     void *userdata;
+	int need_free;
     int enabled; /* handlers are added disabled and enabled after the
 		  * handler chain is processed to prevent stanzas from
 		  * getting processed by newly added handlers */
@@ -279,7 +280,7 @@ void handler_delete_timed(xmpp_conn_t * const conn, xmpp_timed_handler handler);
 void handler_add_id(xmpp_conn_t * const conn,
 		    xmpp_handler handler,
 		    const char * const id,
-		    void * const userdata);
+			void * const userdata, int need_free);
 void handler_add(xmpp_conn_t * const conn,
 		 xmpp_handler handler,
 		 const char * const ns,

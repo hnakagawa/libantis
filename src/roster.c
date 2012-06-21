@@ -1,24 +1,29 @@
+#include <stdlib.h>
 #include <pthread.h>
 
-#include <strophe.h>
-#include <antistrophe.h>
+#include "antistrophe.h"
 
 #include "common.h"
 #include "util.h"
 
 #define MAX_USER 1000
 
+typedef struct {
+	xmpp_request_handler handler;
+	void *data;
+} handler_userdata_t;
+
 static int roster_handler(xmpp_conn_t * const conn, xmpp_stanza_t * const stanza, void * const userdata)
 {
     xmpp_stanza_t *query, *item;
     char *type;
-	xmpp_roster_handler handler = userdata;
+	handler_userdata_t *handler_userdata = userdata;
 	int count;
 
     type = xmpp_stanza_get_type(stanza);
     if (!strcmp(type, "error")) {
 	    xmpp_error(conn->ctx, "log", "ERROR: query failed");
-		handler(conn, XMPP_ERROR);
+		handler_userdata->handler(conn, XMPP_ERROR, handler_userdata->data);
 		return 0;
 	}
 
@@ -38,14 +43,15 @@ static int roster_handler(xmpp_conn_t * const conn, xmpp_stanza_t * const stanza
 
 	pthread_mutex_unlock(&conn->users_lock);
 
-	handler(conn, XMPP_SUCCESS);
+	handler_userdata->handler(conn, XMPP_SUCCESS, handler_userdata->data);
 
 	return 0;
 }
 
-void xmpp_roster(xmpp_conn_t * const conn, xmpp_roster_handler handler)
+void xmpp_send_roster(xmpp_conn_t * const conn, xmpp_request_handler handler, void * const userdata)
 {
 	xmpp_stanza_t *iq, *query;
+	handler_userdata_t *handler_userdata;
 
 	iq = xmpp_stanza_new(conn->ctx);
 	xmpp_stanza_set_name(iq, "iq");
@@ -61,7 +67,10 @@ void xmpp_roster(xmpp_conn_t * const conn, xmpp_roster_handler handler)
 	/* we can release the stanza since it belongs to iq now */
 	xmpp_stanza_release(query);
 
-	handler_add_id(conn, roster_handler, "roster1", handler);
+	handler_userdata = xmpp_alloc(conn->ctx, sizeof(handler_userdata_t));
+	handler_userdata->handler = handler;
+	handler_userdata->data = userdata;
+	handler_add_id(conn, roster_handler, "roster1", handler_userdata, 1);
 
 	/* send out the stanza */
 	xmpp_send(conn, iq);

@@ -314,6 +314,9 @@ int xmpp_conn_release(xmpp_conn_t * const conn)
 			while (hlitem) {
 				thli = hlitem;
 				hlitem = hlitem->next;
+
+				if (thli->need_free)
+					xmpp_free(conn->ctx, thli->userdata);
 				xmpp_free(conn->ctx, thli->id);
 				xmpp_free(conn->ctx, thli);
 			}

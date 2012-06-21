@@ -71,6 +71,9 @@ void handler_fire_stanza(xmpp_conn_t * const conn,
 					hash_drop(conn->id_handlers, id);
 					hash_add(conn->id_handlers, id, next);
 				}
+
+				if (item->need_free)
+					xmpp_free(conn->ctx, item->userdata);
                 xmpp_free(conn->ctx, item->id);
 				xmpp_free(conn->ctx, item);
 				item = NULL;
@@ -258,6 +261,7 @@ static void _timed_handler_add(xmpp_conn_t * const conn,
     item->user_handler = user_handler;
     item->handler = (void *)handler;
     item->userdata = userdata;
+	item->need_free = 0;
     item->enabled = 0;
     item->next = NULL;
 
@@ -331,7 +335,7 @@ void xmpp_timed_handler_delete(xmpp_conn_t * const conn,
 static void _id_handler_add(xmpp_conn_t * const conn,
 							xmpp_handler handler,
 							const char * const id,
-							void * const userdata, int user_handler)
+							void * const userdata, int need_free, int user_handler)
 {
     xmpp_handlist_t *item, *tail;
 
@@ -356,12 +360,15 @@ static void _id_handler_add(xmpp_conn_t * const conn,
     item->user_handler = user_handler;
     item->handler = (void *)handler;
     item->userdata = userdata;
+	item->need_free = need_free;
     item->enabled = 0;
     item->next = NULL;
 
     item->id = xmpp_strdup(conn->ctx, id);
     if (!item->id) {
 		xmpp_error(conn->ctx, "xmpp", "failed to allocate memory");
+		if (item->need_free)
+			xmpp_free(conn->ctx, item->userdata);
 		xmpp_free(conn->ctx, item);
 		return;
     }
@@ -445,7 +452,8 @@ static void _handler_add(xmpp_conn_t * const conn,
     item->user_handler = user_handler;
     item->handler = (void *)handler;
     item->userdata = userdata;
-    item->enabled = 0;
+	item->need_free = 0;
+	item->enabled = 0;
     item->next = NULL;
     
     if (ns) {
@@ -591,7 +599,7 @@ void xmpp_id_handler_add(xmpp_conn_t * const conn,
 {
 	pthread_mutex_lock(&conn->id_handlers_lock);
 
-    _id_handler_add(conn, handler, id, userdata, 1);
+    _id_handler_add(conn, handler, id, userdata, 0, 1);
 
 	pthread_mutex_unlock(&conn->id_handlers_lock);
 }
@@ -608,9 +616,9 @@ void xmpp_id_handler_add(xmpp_conn_t * const conn,
 void handler_add_id(xmpp_conn_t * const conn,
 					xmpp_handler handler,
 					const char * const id,
-					void * const userdata)
+					void * const userdata, int need_free)
 {
-    _id_handler_add(conn, handler, id, userdata, 0);
+    _id_handler_add(conn, handler, id, userdata, need_free, 0);
 }
 
 /** Add a stanza handler.

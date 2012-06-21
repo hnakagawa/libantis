@@ -664,7 +664,7 @@ static void _auth(xmpp_conn_t * const conn)
 	xmpp_stanza_add_child(child, authdata);
 	xmpp_stanza_release(authdata);
 
-	handler_add_id(conn, _handle_legacy, "_xmpp_auth1", NULL);
+	handler_add_id(conn, _handle_legacy, "_xmpp_auth1", NULL, 0);
 	handler_add_timed(conn, _handle_missing_legacy, 
 			  LEGACY_TIMEOUT, NULL);
 
@@ -741,7 +741,7 @@ static int _handle_features_sasl(xmpp_conn_t * const conn,
 		/* bind resource */
 	
 		/* setup response handlers */
-		handler_add_id(conn, _handle_bind, "_xmpp_bind1", NULL);
+		handler_add_id(conn, _handle_bind, "_xmpp_bind1", NULL, 0);
 		handler_add_timed(conn, _handle_missing_bind,
 						  BIND_TIMEOUT, NULL);
 
@@ -853,7 +853,7 @@ static int _handle_bind(xmpp_conn_t * const conn,
 		/* establish a session if required */
 		if (conn->session_required) {
 			/* setup response handlers */
-			handler_add_id(conn, _handle_session, "_xmpp_session1", NULL);
+			handler_add_id(conn, _handle_session, "_xmpp_session1", NULL, 0);
 			handler_add_timed(conn, _handle_missing_session, 
 							  SESSION_TIMEOUT, NULL);
 
