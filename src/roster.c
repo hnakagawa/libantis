@@ -35,7 +35,7 @@ static int roster_handler(xmpp_conn_t * const conn, xmpp_stanza_t * const stanza
 	for (count = 0, item = xmpp_stanza_get_children(query); item && count < MAX_USER;
 		 item = xmpp_stanza_get_next(item), ++count) {
 
-		conn->users[count] = xmpp_user_new(conn->ctx, xmpp_stanza_get_attribute(item, "jid"),
+		conn->users[count] = xmpp_user_new(conn, xmpp_stanza_get_attribute(item, "jid"),
 										   xmpp_stanza_get_attribute(item, "name"));
 	}
 

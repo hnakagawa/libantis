@@ -25,7 +25,7 @@ struct _xmpp_user_t
 {
 	char *jid;
 	char *name;
-	xmpp_ctx_t *ctx;
+	xmpp_conn_t *conn;
 };
 
 typedef int (*xmpp_request_handler)(xmpp_conn_t * const conn, xmpp_request_status_t status, void * const userdata);
@@ -36,7 +36,7 @@ void xmpp_send_presence(xmpp_conn_t * const conn, xmpp_presence_show_t sw, const
 
 void xmpp_send_message(xmpp_conn_t * const conn, const char *msg, const char *to);
 
-xmpp_user_t* xmpp_user_new(xmpp_ctx_t * const ctx, const char *jid, const char *name);
+xmpp_user_t* xmpp_user_new(xmpp_conn_t * const conn, const char *jid, const char *name);
 
 void xmpp_user_release(xmpp_user_t * const user);
 

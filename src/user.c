@@ -4,24 +4,18 @@
 #include "antistrophe.h"
 #include "common.h"
 
-xmpp_user_t* xmpp_user_new(xmpp_ctx_t * const ctx, const char *jid, const char *name)
+xmpp_user_t* xmpp_user_new(xmpp_conn_t * const conn, const char *jid, const char *name)
 {
-	xmpp_user_t *user;
-
-	if (ctx == NULL)
-		return NULL;
-	
-	user = xmpp_alloc(ctx, sizeof(xmpp_user_t));
-	user->ctx = ctx;
-	user->jid = xmpp_strdup(ctx, jid);
-	user->name = xmpp_strdup(ctx, name);
-
+	xmpp_user_t *user = xmpp_alloc(conn->ctx, sizeof(xmpp_user_t));
+	user->conn = conn;
+	user->jid = xmpp_strdup(conn->ctx, jid);
+	user->name = xmpp_strdup(conn->ctx, name);
 	return user;
 }
 
 void xmpp_user_release(xmpp_user_t * const user)
 {
-	xmpp_ctx_t *ctx = user->ctx;
+	xmpp_ctx_t *ctx = user->conn->ctx;
 
 	if (user->name) xmpp_free(ctx, user->name);
 	if (user->jid) xmpp_free(ctx, user->jid);
