@@ -16,4 +16,5 @@ to generate the `configure` script.
 # Android
 
 From the android/build directory, run the following commands:
-    make -f Android.mk
+
+    make -f android.mk
