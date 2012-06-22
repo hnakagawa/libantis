@@ -33,3 +33,14 @@ tests/test_hash
 tests/test_jid
 tests/test_sasl
 tests/test_sock
+
+# built application files
+*.apk
+*.ap_
+# files for the dex VM
+*.dex
+# Java class files
+*.class
+# generated files
+bin/
+gen/
