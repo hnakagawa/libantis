@@ -19,7 +19,7 @@ include $(CLEAR_VARS)
 LOCAL_MODULE    := antistrophe-jni
 LOCAL_SRC_FILES := antistrophe-jni.c
 LOCAL_CFLAGS := -I./include -Wall
-LOCAL_LDLIBS := -llog -lz -lstrophe -lcrypto -lssl -L./obj/local/armeabi/ ./obj/local/armeabi/libexpat.a
+LOCAL_LDLIBS := -llog -lz -lantistrophe -lcrypto -lssl -L./obj/local/armeabi/ ./obj/local/armeabi/libexpat.a
 # LOCAL_LDLIBS += -L/home/hnakagawa/obj/STATIC_LIBRARIES/libexpat_intermediates
 # LOCAL_C_INCLUDES := /home/hnakagawa/obj/include/libexpat
 
