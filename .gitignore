@@ -44,3 +44,6 @@ tests/test_sock
 # generated files
 bin/
 gen/
+android/antistrophe-jni/include/
+android/antistrophe-jni/libs/armeabi/
+android/antistrophe-jni/obj/local/armeabi/libantistrophe*
